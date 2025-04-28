@@ -1,0 +1,253 @@
+aws_redshift_sqlalchemy_db:
+
+  source:
+
+    storage_service: aws_s3
+    external_catalog_service: aws_glue
+    external_db: seed_eu_qe_auto_ext_db
+    spectrum_schema: seed_eu_qe_auto_ext_db_schema
+    uri: "provide/s3/uri/to/source/flat-file/"
+    encoding: "UTF-8"
+    stored_as: "TEXTFILE"
+    source_file_type: "csv"
+    row_format_serde: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+    sep_char: "|"
+    quote_char: '"'
+    escape_char: '\\'
+    skip_head_line_count: 1
+
+    data_validation_checks:
+
+      rule_checks:
+        detect_from: 'column_info'
+
+    data_quality_checks:
+
+      completeness:
+        detect_from: 'column_info'
+
+      duplication:
+        batch_type: "all"
+        detect_from: 'column_info'
+
+  target:
+
+    lndp:
+
+      table_name: "tables_lndp_name"
+      schema_name: "tables_lndp_schema"
+      reference_layer: "spectrum"
+
+      data_validation_checks:
+
+        rule_checks:
+          detect_from: 'column_info'
+
+      data_quality_checks:
+
+        timeliness:
+          detect_from: 'column_info'
+
+        completeness:
+          detect_from: 'column_info'
+
+        duplication:
+          batch_type: "latest"
+          detect_from: 'column_info'
+
+        consistency:
+          detect_from: 'reference_layer'
+
+        accuracy:
+          detect_from: 'column_info'
+
+    edwp:
+
+      table_name: "tables_edwp_name"
+      schema_name: "tables_edwp_schema"
+      reference_layer: "lndp"
+
+      data_validation_checks:
+
+        rule_checks:
+          detect_from: 'column_info'
+
+      data_quality_checks:
+
+        timeliness:
+          detect_from: 'column_info'
+
+        completeness:
+          detect_from: 'column_info'
+
+        duplication:
+          batch_type: "latest"
+          detect_from: 'column_info'
+
+        consistency:
+          detect_from: 'reference_layer'
+
+        accuracy:
+          detect_from: 'column_info'
+
+columns_info:
+
+  expected_columns:
+
+  null_columns:
+
+  unique_columns:
+
+  timeliness_columns:
+    insrt_dttm: 0
+    updt_dttm: 0
+
+  system_columns:
+    - src_sys_cd VARCHAR(10)
+    - insrt_dttm TIMESTAMP WITHOUT TIME ZONE
+    - updt_dttm TIMESTAMP WITHOUT TIME ZONE
+
+  internal_external_data_type_mapping:
+    CHARACTER: char
+    VARCHAR: varchar
+    BOOLEAN: boolean
+    REAL: float
+    DOUBLE PRECISION: double
+    SMALLINT: smallint
+    INTEGER: int
+    BIGINT: bigint
+    DATE: date
+    TIMESTAMP WITHOUT TIME ZONE: timestamp
+    SUPER: super
+    NUMERIC(precision, scale): decimal(precision, scale)
+
+  column_mapping:
+    spectrum_edwp:
+    lndp_edwp:
+
+  validation_rules:
+
+synthetic_data:
+  unique: true
+  row_count: 1
+  no_special_characters: true
+  discard_data: true
+
+scd_info:
+
+  enable_scd_validations: false
+
+  has_opco: false
+
+  surrogate_keys:
+
+  business_keys:
+
+  lndp_to_edwp_sqls:
+    - 'git/repo/full/path/to/the/table/script/lnd_to_edw_table.sql'
+
+  dt_prefix: prefix_col_name
+
+  validation:
+    - scd_checks
+
+  minor_columns:
+
+  major_columns:
+
+  ind_columns:
+    - curr_rec_ind
+    - src_del_ind
+
+  dt_columns:
+    - _eff_dt
+    - _end_dt
+
+  hash_columns:
+    - maj_atr_md5_hsh_cd
+    - mnr_atr_md5_hsh_cd
+
+test_scope:
+  local:
+    source:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - completeness
+        - duplication
+    target_lndp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+    target_edwp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+  cicd:
+    source:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - completeness
+        - duplication
+    target_lndp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+    target_edwp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+  etl:
+    source:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - completeness
+        - duplication
+    target_lndp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+    target_edwp:
+      data_validation:
+        - rule_checks
+      data_quality:
+        - timeliness
+        - completeness
+        - duplication
+        - consistency
+        - accuracy
+
+test_info:
+  table_identifier: "tables_unique_name"
+  load_strategy: "tables_loading_strategy"
+  data_processing_mode: "sql_based"
+  use_synthetic_data: false
+
+trigger_counter: 0
