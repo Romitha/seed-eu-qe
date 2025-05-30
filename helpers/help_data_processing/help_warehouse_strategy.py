@@ -132,6 +132,65 @@ class WarehouseStrategyHelper:
 
         return None
 
+    # def process_verification_results(self, results, layer_name):
+    #     """
+    #     Recursively searches for a table and its layer in results.
+    #     If any sub-dictionaries under layer_name contain "status": False,
+    #     it raises an error and logs the associated test details.
+    #     """
+    #     table_name = self.table_name
+    #
+    #     # Step 1: Validate if the table_name exists
+    #     if table_name not in results:
+    #         raise KeyError(f"Table '{table_name}' is not found in results")
+    #
+    #     # Step 2: Validate if the layer_name exists under the table
+    #     if layer_name not in results[table_name]:
+    #         raise KeyError(f"Layer '{layer_name}' not found under table '{table_name}'")
+    #
+    #     # Step 3: Function to recursively check for 'status': False in nested dictionaries
+    #     def find_failed_status(sub_dict):
+    #         # Recursively looks for 'status': False in nested dictionaries
+    #         if not isinstance(sub_dict, dict):
+    #             return None  # Skip non-dictionary values
+    #
+    #         # If 'status' key exists and is False, return test details
+    #         if sub_dict.get("status") is False:
+    #             return sub_dict.get("test_details", "No test details available")
+    #
+    #         # Recursively search in all dictionary values
+    #         for value in sub_dict.values():
+    #             error_message = find_failed_status(value)
+    #             if error_message:
+    #                 return error_message  # Return immediately once an error is found
+    #
+    #         return None
+    #
+    #     # Step 4: Start checking within the specified layer
+    #     error_details = find_failed_status(results[table_name][layer_name])
+    #
+    #     if error_details:
+    #         raise ValueError(f"Verification failed for table '{table_name}', layer '{layer_name}': {error_details}")
+    #
+    #     LOGGER.info(f"Table '{table_name}', Layer '{layer_name}' passed verification")
+
+    def find_failed_status(sub_dict):
+        # Recursively looks for 'status': False in nested dictionaries
+        if not isinstance(sub_dict, dict):
+            return None  # Skip non-dictionary values
+
+        # If 'status' key exists and is explicitly False (not "Warning", "Skipped", etc.)
+        if sub_dict.get("status") is False:  # Using 'is' to check for boolean False
+            return sub_dict.get("test_details", "No test details available")
+
+        # Recursively search in all dictionary values
+        for value in sub_dict.values():
+            error_message = sub_dict.find_failed_status(value)
+            if error_message:
+                return error_message  # Return immediately once an error is found
+
+        return None
+
     def process_verification_results(self, results, layer_name):
         """
         Recursively searches for a table and its layer in results.
@@ -155,7 +214,8 @@ class WarehouseStrategyHelper:
                 return None  # Skip non-dictionary values
 
             # If 'status' key exists and is False, return test details
-            if sub_dict.get("status") is False:
+            # Important: Treat "Warning" status differently - don't fail the test
+            if sub_dict.get("status") is False and sub_dict.get("status") != "Warning":
                 return sub_dict.get("test_details", "No test details available")
 
             # Recursively search in all dictionary values

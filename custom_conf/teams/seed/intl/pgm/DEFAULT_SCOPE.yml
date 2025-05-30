@@ -64,6 +64,7 @@ aws_redshift_sqlalchemy_db:
     edwp:
 
       table_name: "tables_edwp_name"
+      history_table_name: "history_tables_name"
       schema_name: "tables_edwp_schema"
       reference_layer: "lndp"
 
@@ -193,6 +194,7 @@ test_scope:
         - duplication
         - consistency
         - accuracy
+        - history_validation
   cicd:
     source:
       data_validation:
@@ -218,6 +220,7 @@ test_scope:
         - duplication
         - consistency
         - accuracy
+        - history_validation
   etl:
     source:
       data_validation:
@@ -243,6 +246,7 @@ test_scope:
         - duplication
         - consistency
         - accuracy
+        - history_validation
 
 test_info:
   table_identifier: "tables_unique_name"

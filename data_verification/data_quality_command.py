@@ -1,5 +1,5 @@
 from helpers.help_data_verification.help_data_quality import DataQualityHelper
-
+from utils.framework.custom_logger_util import get_logger
 
 class DataQualityCommand:
 
@@ -34,7 +34,8 @@ class DataQualityCommand:
             'duplication': dq_helper.finalize_and_run_duplication_checks,
             'completeness': dq_helper.finalize_and_run_completeness_checks,
             'consistency': dq_helper.finalize_and_run_consistency_checks,
-            'accuracy': dq_helper.finalize_and_run_accuracy_checks
+            'accuracy': dq_helper.finalize_and_run_accuracy_checks,
+            'history_validation': dq_helper.finalize_and_run_history_validation
         }
 
         for check_name, check_method in available_checks.items():

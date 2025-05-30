@@ -17,6 +17,8 @@ from utils.framework.data_quality_utils.consistency_util import (
 from utils.framework.data_quality_utils.duplication_util import (
     check_src_column_name_duplicates, check_src_row_duplicates,
     check_trg_column_name_duplicates, check_trg_latest_row_duplicates)
+from utils.framework.data_quality_utils.history_validation_util import check_history_timestamps, \
+    check_latest_history_matches, check_row_counts, check_history_table_existence
 from utils.framework.data_quality_utils.timeliness_util import \
     check_timeliness_in_latest_batch
 
@@ -406,5 +408,221 @@ class DataQualityHelper:
                 'status': "Failed",
                 'test_details': {
                     'message': f"Error during accuracy checks for {table_name}: {str(e)}"
+                }
+            }
+
+    def finalize_and_run_history_validation(self):
+        """
+        Runs history validation checks for truncate-load tables, ensuring that
+        historical data is properly maintained during load operations.
+
+        Returns:
+            dict: Dictionary containing all history validation check results
+        """
+        # Skip for source layer or if load_strategy is not appropriate
+        history_validation_results ={}
+        LOGGER.info("=" * 80)
+        LOGGER.info("STARTING HISTORY VALIDATION CHECKS")
+        LOGGER.info("=" * 80)
+
+        # Skip for source layer or if load_strategy is not appropriate
+        history_validation_results = {}
+        if self.layer_name in ["source", "target_lndp"]:
+            skip_message = f"Skipping history validation for {self.layer_name} layer - only applicable for EWP layer with truncate-load strategy"
+            LOGGER.info(skip_message)
+            LOGGER.info(f"RESULT: ⚠️  SKIPPED - {self.layer_name} layer not supported")
+            LOGGER.info("=" * 80)
+            return {
+                'status': "Skipped",
+                'test_details': {
+                    'message': skip_message
+                }
+            }
+
+        # Get the table load strategy
+        load_strategy = self.layer_settings.get('load_strategy')
+        if load_strategy != 'truncate_load':
+            skip_message = f"History validation is only applicable for truncate_load strategy, not {load_strategy}"
+            LOGGER.info(f"Current load strategy: {load_strategy}")
+            LOGGER.info(skip_message)
+            LOGGER.info("RESULT: ⚠️  SKIPPED - Non-truncate-load strategy")
+            LOGGER.info("=" * 80)
+            return {
+                'status': "Skipped",
+                'test_details': {
+                    'message': skip_message
+                }
+            }
+
+        # Get schema and table names
+        schema_name = self.layer_settings.get('schema_name')
+        table_name = self.layer_settings.get('table_name')
+        history_table_name = self.layer_settings.get('history_table_name')
+        unique_columns = self.layer_settings['columns_info']['unique_columns']
+
+        LOGGER.info(f"📊 Target Table: {schema_name}.{table_name}")
+        LOGGER.info(f"📚 History Table: {schema_name}.{history_table_name}")
+        LOGGER.info(f"🔑 Unique Columns: {unique_columns}")
+        LOGGER.info(f"⚙️  Load Strategy: {load_strategy}")
+        LOGGER.info("-" * 80)
+
+        # Initialize detailed results structure
+        detailed_results = {
+            'table_info': {
+                'schema_name': schema_name,
+                'table_name': table_name,
+                'history_table_name': history_table_name,
+                'load_strategy': load_strategy,
+                'unique_columns': unique_columns
+            },
+            'checks_performed': {
+                'history_table_existence': {},
+                'row_count_comparison': {},
+                'latest_history_matching': {},
+                'timestamp_progression': {}
+            },
+            'summary': {}
+        }
+
+        try:
+            # Check 1: Verify history table exists
+            history_check = check_history_table_existence(self.client, schema_name, table_name, history_table_name)
+
+            if not history_check['status']:
+                LOGGER.warning(f"History table not found: {history_check['message']}")
+                return {
+                    'status': "Warning",  # Use "Warning" instead of False
+                    'test_details': {
+                        'message': history_check['message'],
+                        'recommendation': "Consider implementing a history table for this truncate-load table to maintain historical records"
+                    }
+                }
+            # Store Check 1 results
+            detailed_results['checks_performed']['history_table_existence'] = {
+                'status': history_check['status'],
+                'message': history_check['message'],
+                'history_table_name': history_check.get('history_table_name'),
+                'check_completed': True
+            }
+
+            # Check 2: Compare row counts
+            count_check = check_row_counts(self.client, schema_name, table_name, history_table_name)
+            if not count_check['status']:
+                LOGGER.warning(f"Issue of Compare row counts: {count_check['message']}")
+                return {
+                    'status': "Warning",
+                    'test_details': {
+                        'message': count_check['message'],
+                        'main_count': count_check.get('main_count'),
+                        'history_count': count_check.get('history_count'),
+                    }
+                }
+            # Store Check 2 results
+            detailed_results['checks_performed']['row_count_comparison'] = {
+                'status': count_check['status'],
+                'message': count_check['message'],
+                'main_count': count_check.get('main_count'),
+                'history_count': count_check.get('history_count'),
+                'check_completed': True
+            }
+
+            # Check 3: Verify latest history matches main table
+            match_check = check_latest_history_matches(self.client, schema_name, table_name, history_table_name, unique_columns)
+            if not match_check['status']:
+                LOGGER.warning(f"❌ CHECK 3 FAILED: {match_check['message']}")
+                return {
+                    'status': False,
+                    'test_details': {
+                        'message': match_check['message'],
+                        'unmatched_count': match_check.get('unmatched_count')
+                    }
+                }
+            # Store Check 3 results
+            detailed_results['checks_performed']['latest_history_matching'] = {
+                'status': match_check['status'],
+                'message': match_check['message'],
+                'main_count': match_check.get('main_count'),
+                'history_count': match_check.get('history_count'),
+                'matched_count': match_check.get('matched_count'),
+                'expected_matches': match_check.get('expected_matches'),
+                'latest_history_date': match_check.get('latest_history_date'),
+                'unique_columns_used': match_check.get('unique_columns_used'),
+                'unmatched_count': match_check.get('unmatched_count'),
+                'check_completed': True
+            }
+            # Check 4: Verify timestamp progression
+            timestamp_check = check_history_timestamps(self.client, schema_name, history_table_name)
+
+            if not timestamp_check['status']:
+                LOGGER.error(f"❌ CHECK 4 FAILED: {timestamp_check['message']}")
+                return {
+                    'status': False,
+                    'test_details': {
+                        'message': timestamp_check['message'],
+                        'distinct_timestamps': timestamp_check.get('distinct_timestamps')
+                    }
+                }
+            # Store Check 4 results
+            detailed_results['checks_performed']['timestamp_progression'] = {
+                'status': timestamp_check['status'],
+                'message': timestamp_check['message'],
+                'distinct_timestamps': timestamp_check.get('distinct_timestamps'),
+                'first_timestamp': timestamp_check.get('first_timestamp'),
+                'last_timestamp': timestamp_check.get('last_timestamp'),
+                'total_records': timestamp_check.get('total_records'),
+                'check_completed': True
+            }
+            # All checks passed - Create summary
+            detailed_results['summary'] = {
+                'total_checks': 4,
+                'passed_checks': 4,
+                'failed_checks': 0,
+                'warning_checks': 0,
+                'overall_status': 'Passed',
+                'validation_date': str(timestamp_check.get('last_timestamp', 'Unknown')),
+                'data_quality_score': '100%'
+            }
+
+            # All checks passed
+            LOGGER.info("-" * 80)
+            LOGGER.info("🎉 ALL HISTORY VALIDATION CHECKS PASSED!")
+            LOGGER.info(f"✅ History validation successful for {schema_name}.{table_name}")
+
+            history_validation_results = {
+                'status': True,
+                'test_details': {
+                    'message': f"History validation successful for {schema_name}.{table_name}",
+                    **detailed_results
+                }
+            }
+
+            # Log summary
+            LOGGER.info("📊 VALIDATION SUMMARY:")
+            LOGGER.info(f"   Main table rows: {count_check.get('main_count'):,}")
+            LOGGER.info(f"   History table rows: {count_check.get('history_count'):,}")
+            LOGGER.info(f"   Timestamp versions: {timestamp_check.get('distinct_timestamps')}")
+            LOGGER.info(f"   Records matched: {match_check.get('matched_count', 0):,}")
+            LOGGER.info("=" * 80)
+
+            return history_validation_results
+
+        except Exception as e:
+            error_message = f"Error during history validation for {table_name}: {str(e)}"
+            LOGGER.error(f"💥 CRITICAL ERROR: {error_message}")
+            LOGGER.error("=" * 80)
+            # Mark all checks as failed due to exception
+            for check_name in detailed_results['checks_performed']:
+                if not detailed_results['checks_performed'][check_name].get('check_completed'):
+                    detailed_results['checks_performed'][check_name] = {
+                        'status': 'Error',
+                        'message': f"Check failed due to exception: {str(e)}",
+                        'check_completed': False
+                    }
+
+            return {
+                'status': False,
+                'test_details': {
+                    'message': error_message,
+                    **detailed_results
                 }
             }
