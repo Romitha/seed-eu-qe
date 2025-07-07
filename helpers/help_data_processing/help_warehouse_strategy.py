@@ -194,7 +194,7 @@ class WarehouseStrategyHelper:
     def process_verification_results(self, results, layer_name):
         """
         Recursively searches for a table and its layer in results.
-        If any sub-dictionaries under layer_name contain "status": False,
+        If any sub-dictionaries under layer_name contain "status": False or "Error",
         it raises an error and logs the associated test details.
         """
         table_name = self.table_name
@@ -207,20 +207,24 @@ class WarehouseStrategyHelper:
         if layer_name not in results[table_name]:
             raise KeyError(f"Layer '{layer_name}' not found under table '{table_name}'")
 
-        # Step 3: Function to recursively check for 'status': False in nested dictionaries
+        # Step 3: Function to recursively check for 'status': False or "Error" in nested dictionaries
         def find_failed_status(sub_dict):
-            # Recursively looks for 'status': False in nested dictionaries
+            # Recursively looks for 'status': False or "Error" in nested dictionaries
             if not isinstance(sub_dict, dict):
                 return None  # Skip non-dictionary values
 
             # If 'status' key exists and is False, return test details
-            # Important: Treat "Warning" status differently - don't fail the test
+            # Important: Treat "Warning" and "Skipped" status differently - don't fail the test
             if sub_dict.get("status") is False and sub_dict.get("status") != "Warning":
                 return sub_dict.get("test_details", "No test details available")
 
+            # Handle "Error" status from SCD validation failures
+            if sub_dict.get("status") == "Error":
+                return sub_dict.get("reason", sub_dict.get("test_details", "SCD validation error occurred"))
+
             # Recursively search in all dictionary values
             for value in sub_dict.values():
-                error_message = find_failed_status(value)
+                error_message = find_failed_status(value)  # FIXED: was sub_dict.find_failed_status(value)
                 if error_message:
                     return error_message  # Return immediately once an error is found
 

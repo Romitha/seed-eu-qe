@@ -379,7 +379,7 @@ def validate_internal_table_schema(client, schema_name, table_name, converted_co
             elif dtype in ('numeric', 'decimal'):
                 precision = row["numeric_precision"]
                 scale = row["numeric_scale"]
-                actual_dtype = f"{dtype}({precision}, {scale})"
+                actual_dtype = f"{dtype}({precision},{scale})"
             else:
                 actual_dtype = dtype
 

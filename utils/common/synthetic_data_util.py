@@ -1,6 +1,7 @@
 import re
 import secrets
 from datetime import datetime
+from decimal import Decimal
 
 import sqlalchemy
 from faker import Faker
@@ -26,42 +27,49 @@ def generate_table_schema_from_columns(expected_columns: list) -> dict:
               - int: ["int", 10]
               - str: ["str", varchar_limit]
               - float: ["float", precision - scale + 0.1]
-
-    Examples:
-        >>> generate_table_schema_from_columns(["id INT", "name VARCHAR(50)", "price NUMERIC(30, 20)"])
-        {'id': ['int', 10], 'name': ['str', 50], 'price': ['float', 10.1]}
+              - decimal: ["decimal", (precision, scale)]
     """
     table_schema = {}
 
     for col_def in expected_columns:
-        col_name, col_type = col_def.split(" ", 1)
+        parts = col_def.split(" ", 1)
+        if len(parts) < 2:
+            continue
 
-        if "VARCHAR" in col_type:
-            match = re.search(r"VARCHAR\((\d+)\)", col_type)
-            length = int(match.group(1)) if match else 255  # Default to 255 if unspecified
+        col_name, col_type = parts[0], parts[1]
+
+        if "VARCHAR" in col_type.upper():
+            match = re.search(r"VARCHAR\((\d+)\)", col_type, re.IGNORECASE)
+            length = int(match.group(1)) if match else 255
             table_schema[col_name] = ["str", length]
 
-        elif "NUMERIC" in col_type:
-            match = re.search(r"NUMERIC\((\d+),\s*(\d+)\)", col_type)
+        elif "NUMERIC" in col_type.upper():
+            match = re.search(r"NUMERIC\((\d+),\s*(\d+)\)", col_type, re.IGNORECASE)
             if match:
                 precision = int(match.group(1))
                 scale = int(match.group(2))
-                value_size = precision - scale + 0.1  # Applying the custom rule
+                table_schema[col_name] = ["decimal", (precision, scale)]
             else:
-                value_size = 10.1  # Default if precision/scale are not provided
-            table_schema[col_name] = ["float", value_size]
+                table_schema[col_name] = ["decimal", (10, 2)]  # Default precision and scale
 
-        elif "INT" in col_type:
+        elif "INT" in col_type.upper():
             table_schema[col_name] = ["int", 10]
 
-        elif "DATE" in col_type:
+        elif "DATE" in col_type.upper():
             table_schema[col_name] = ["date", None]
 
-        elif "TIMESTAMP" in col_type:
+        elif "TIMESTAMP" in col_type.upper():
             table_schema[col_name] = ["timestamp", None]
 
+        elif "BOOLEAN" in col_type.upper():
+            table_schema[col_name] = ["boolean", None]
+
+        elif "REAL" in col_type.upper() or "FLOAT" in col_type.upper():
+            table_schema[col_name] = ["float", 10.1]
+
         else:
-            table_schema[col_name] = ["str", 255]  # Default to string with max length
+            # Default to string for unknown types
+            table_schema[col_name] = ["str", 255]
 
     return table_schema
 
@@ -107,9 +115,50 @@ def generate_synthetic_data(table_schema: dict, num_rows: int) -> list:
             elif dtype == "int":
                 row[col] = secrets.choice(range(1, 11))
             elif dtype == "str":
-                row[col] = fake.word()[:limit]
+                # Generate string within the specified length limit
+                max_length = min(limit, 50) if limit else 50  # Cap at 50 chars for readability
+                generated_word = fake.word()[:max_length - 1]  # Leave space for safety
+                row[col] = generated_word
             elif dtype == "float":
-                row[col] = round(secrets.randbelow(10) + secrets.randbits(10) / (2 ** 10), 10)
+                row[col] = round(secrets.randbelow(10) + secrets.randbits(10) / (2 ** 10), 2)
+            elif dtype == "decimal":
+                precision, scale = limit
+                # Generate a decimal value that fits within the precision and scale constraints
+                max_integer_digits = precision - scale
+
+                # Ensure we don't exceed the precision
+                if max_integer_digits <= 0:
+                    # If no room for integer part, generate a small fractional number
+                    integer_part = 0
+                else:
+                    max_integer_value = min(10 ** max_integer_digits - 1, 999999)  # Cap for safety
+                    integer_part = secrets.randbelow(max_integer_value + 1)
+
+                if scale > 0:
+                    fractional_part = secrets.randbelow(10 ** scale)
+                    # Format the decimal string properly
+                    decimal_str = f"{integer_part}.{fractional_part:0{scale}d}"
+                else:
+                    decimal_str = str(integer_part)
+
+                decimal_value = Decimal(decimal_str)
+
+                # Ensure the value fits within the precision constraint
+                # Convert to string and check total length (excluding decimal point)
+                decimal_str_check = str(decimal_value).replace('.', '')
+                if len(decimal_str_check) > precision:
+                    # If too long, generate a smaller value
+                    safe_integer_digits = max(1, precision - scale)
+                    safe_integer_value = min(10 ** safe_integer_digits - 1, 999)
+                    if scale > 0:
+                        safe_fractional = secrets.randbelow(10 ** scale)
+                        decimal_value = Decimal(f"{safe_integer_value}.{safe_fractional:0{scale}d}")
+                    else:
+                        decimal_value = Decimal(str(safe_integer_value))
+
+                row[col] = decimal_value
+            elif dtype == "boolean":
+                row[col] = secrets.choice([True, False])
             elif dtype == "date":
                 row[col] = fake.date_this_century()
             elif dtype == "timestamp":
@@ -132,10 +181,6 @@ def delete_synthetic_data(client, schema_name: str, table_name: str) -> None:
 
     Raises:
         sqlalchemy.exc.SQLAlchemyError: If the delete operation fails
-
-    Examples:
-        >>> delete_synthetic_data(sqlalchemy.engine.Engine, "public", "users")
-        Deleted 10 rows from schema.table where src_sys_cd = 'XYZ'
     """
     metadata = MetaData()
     table = Table(table_name, metadata, autoload_with=client, schema=schema_name)
@@ -161,11 +206,6 @@ def insert_synthetic_data(client, schema_name: str, table_name: str, synthetic_d
 
     Raises:
         sqlalchemy.exc.SQLAlchemyError: If the insert operation fails
-
-    Examples:
-        >>> data = [{'id': 1, 'name': 'abc', 'src_sys_cd': 'XYZ'}]
-        >>> insert_synthetic_data(sqlalchemy.engine.Engine, "public", "users", data)
-        Inserted 1 rows into schema.table
     """
     metadata = MetaData()
     table = Table(table_name, metadata, autoload_with=client, schema=schema_name)
@@ -174,4 +214,4 @@ def insert_synthetic_data(client, schema_name: str, table_name: str, synthetic_d
 
     with client.connect() as conn:
         conn.execute(stmt)
-        print(f"Inserted {len(synthetic_data)} rows into {schema_name}.{table_name}")
+        LOGGER.info(f"Inserted {len(synthetic_data)} rows into {schema_name}.{table_name}")

@@ -188,6 +188,7 @@ test_scope:
     target_edwp:
       data_validation:
         - rule_checks
+        - scd_checks
       data_quality:
         - timeliness
         - completeness
@@ -214,6 +215,7 @@ test_scope:
     target_edwp:
       data_validation:
         - rule_checks
+        - scd_checks
       data_quality:
         - timeliness
         - completeness
@@ -240,6 +242,7 @@ test_scope:
     target_edwp:
       data_validation:
         - rule_checks
+        - scd_checks
       data_quality:
         - timeliness
         - completeness

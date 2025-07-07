@@ -91,3 +91,43 @@ def find_string_dates_needing_cast(expected_columns, mapped_columns):
                 columns_to_fix.append(src_name)
 
     return columns_to_fix
+
+def generate_lndp_and_edwp_col_values(column_values):
+    lndp_columns = []
+    edwp_columns = []
+
+    if column_values:
+        for column_string in column_values:
+            # Split the string to get parts. The tag is always the last word.
+            # The column name and type can have spaces in the type (e.g., 'NUMERIC(18,12)').
+            parts = column_string.rsplit(' ', 1) # Split only on the last space
+
+            if len(parts) == 2:
+                name_and_type = parts[0]
+                tag = parts[1]
+
+                # Now, separate name and type from 'name TYPE'
+                # Find the last space that separates the name from the type
+                type_start_index = name_and_type.rfind(' ')
+                if type_start_index != -1:
+                    column_name = name_and_type[:type_start_index].strip()
+                    column_type = name_and_type[type_start_index:].strip()
+                else:
+                    # Handle cases where there might not be a type, just a name and tag
+                    column_name = name_and_type.strip()
+                    column_type = "" # Or handle as an error if type is always expected
+
+                column_info = f"{column_name} {column_type}"
+
+                if tag == "both":
+                    lndp_columns.append(column_info)
+                    edwp_columns.append(column_info)
+                elif tag == "only_lndp":
+                    lndp_columns.append(column_info)
+                elif tag == "only_edwp":
+                    edwp_columns.append(column_info)
+                else:
+                    print(f"Warning: Unknown tag '{tag}' for column '{column_name}'. Skipping.")
+            else:
+                print(f"Warning: Could not parse column string: '{column_string}'. Skipping.")
+    return lndp_columns, edwp_columns

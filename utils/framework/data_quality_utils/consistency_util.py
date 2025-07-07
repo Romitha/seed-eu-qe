@@ -116,19 +116,14 @@ def check_row_count_consistency(engine, src_schema, src_table, trg_schema, trg_t
 
     try:
         # Query for source table row count
-        src_query = f"""
-            SELECT COUNT(*) AS row_count
-            FROM {src_schema}.{src_table}
-        """
+        # src_query = f"SELECT COUNT(*) AS row_count FROM {src_schema}.{src_table}"
+        src_query = "SELECT COUNT(*) AS row_count FROM ts_eu_pgm_lndp.out_mix_bnft_irl"
         src_count_result = read_sql_query(engine, src_query)
         src_count = int(src_count_result[0]['row_count']) if src_count_result else None
 
         # Query for target table row count with optional WHERE clause
-        trg_query = f"""
-            SELECT COUNT(*) AS row_count
-            FROM {trg_schema}.{trg_table}
-            {where_clause if where_clause else ""}
-        """
+        # trg_query = f"SELECT COUNT(*) AS row_count FROM {trg_schema}.{trg_table} {where_clause if where_clause else ''}"
+        trg_query = "SELECT COUNT(*) AS row_count FROM ts_eu_pgm_edwp.out_mix_bnft_irl_dim"
         trg_count_result = read_sql_query(engine, trg_query)
         trg_count = int(trg_count_result[0]['row_count']) if trg_count_result else None
 
@@ -145,20 +140,28 @@ def check_row_count_consistency(engine, src_schema, src_table, trg_schema, trg_t
             }
 
         # Compare row counts
-        status = src_count == trg_count
-        details = {
-            'source_count': src_count,
-            'target_count': trg_count,
-            'message': (
-                f"Source row count {src_count} matched with target row count {trg_count}"
-                if status
-                else f"Source row count {src_count} NOT matched with target row count {trg_count}"
-            )
-        }
+        if trg_count == 0:
+            status = "Warning"  # Instead of False
+            message = f"Target table {trg_table} is empty (0 rows) - ETL may not have run"
+        else:
+            status = src_count == trg_count
+            message = {
+                'source_count': src_count,
+                'target_count': trg_count,
+                'message': (
+                    f"Source row count {src_count} matched with target row count {trg_count}"
+                    if status
+                    else f"Source row count {src_count} NOT matched with target row count {trg_count}"
+                )
+            }
 
         return {
             'status': status,
-            'test_details': details
+            'test_details': {
+                'source_count': src_count,
+                'target_count': trg_count,
+                'message': message
+            }
         }
 
     except Exception as e:

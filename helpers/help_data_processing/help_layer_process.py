@@ -1,5 +1,6 @@
 from utils.framework.custom_data_processing_util import (
     get_col_mapping_for_layer, initiate_spectrum_creation)
+from utils.framework.custom_data_verification_util import generate_lndp_and_edwp_col_values
 from utils.framework.custom_logger_util import get_logger
 from utils.framework.data_validation_utils.scd_util import get_scd_default_cols
 
@@ -18,6 +19,7 @@ class LayerProcessHelper:
         self.connection_system = next(iter(self.table_settings), None)
         self.column_info = self.table_settings.get("columns_info", {})
         self.expected_columns = self.column_info.get("expected_columns", {})
+        self.lndp_columns, self.ewdp_columns = generate_lndp_and_edwp_col_values(self.expected_columns)
         self.conf_synthetic_data = self.table_settings.get("synthetic_data", {})
         self.test_scope = self.table_settings.get("test_scope", {})
         self.test_info = self.table_settings.get("test_info", {})
@@ -77,10 +79,9 @@ class LayerProcessHelper:
         self.setup_additional_layer_settings(test_layer, layer_info, is_src_supported, data_gen_status)
 
         if not data_gen_status:
-
             initiate_spectrum_creation(
                 wh_client, src_client, ext_db_client, src_layer_settings, self.table_name,
-                self.expected_columns, self.source_bucket)
+                self.lndp_columns, self.source_bucket)
         else:
             LOGGER.info("Cannot support source layer synthetic data generation yet")
 
@@ -102,7 +103,7 @@ class LayerProcessHelper:
         if reference_layer == "spectrum" and not is_src_supported:
             initiate_spectrum_creation(
                 db_client, src_client, ext_db_client, src_layer_settings, self.table_name,
-                self.expected_columns, self.source_bucket)
+                self.lndp_columns, self.source_bucket)
 
         elif reference_layer == "lndp":
             lndp_settings = self.table_settings.get(self.connection_system).get('target').get('lndp')

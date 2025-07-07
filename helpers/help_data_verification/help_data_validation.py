@@ -31,7 +31,12 @@ class DataValidationHelper:
             LOGGER.info(
                 f"Skipping scd checks for "
                 f"{self.layer_name} in unsupported layer {self.layer_settings.get('schema_name')}")
-            return
+            return {
+                'status': "Skipped",
+                'test_details': {
+                    'message': f"Skipping scd checks for {self.layer_name} in unsupported layer"
+                }
+            }
 
         lndp_schema_name = self.layer_settings['lndp_settings']['schema_name']
         lndp_table_name = self.layer_settings['lndp_settings']['table_name']
@@ -61,7 +66,8 @@ class DataValidationHelper:
                 run_lndp_edwp_script_for_scd_tables(self.client, scd_settings, pat, run_mode)
 
                 # Step 4: - validate or check the scd column's value for the major cols update scenario
-                hash_info = check_scd_values_for_major_columns(self.client, edwp_schema_name, edwp_table_name, scd_columns)
+                hash_info = check_scd_values_for_major_columns(self.client, edwp_schema_name, edwp_table_name,
+                                                               scd_columns)
 
                 # step 5: Update columns (updated min)
                 update_scd_maj_min_columns(self.client, lndp_schema_name, lndp_table_name, scd_settings, "minor")
@@ -70,7 +76,8 @@ class DataValidationHelper:
                 run_lndp_edwp_script_for_scd_tables(self.client, scd_settings, pat, run_mode)
 
                 # Step 7: - validate or check the scd column's value for the min cols update scenario
-                check_scd_values_for_minor_columns(self.client, edwp_schema_name, edwp_table_name, scd_columns, hash_info)
+                check_scd_values_for_minor_columns(self.client, edwp_schema_name, edwp_table_name, scd_columns,
+                                                   hash_info)
 
                 # Step 8: Check current record status 'Y' and src del status 'Y' records having end dt '9999-12-31' date
                 validate_deleted_records_for_scd_table(self.client, edwp_schema_name, edwp_table_name, scd_settings)
@@ -83,9 +90,25 @@ class DataValidationHelper:
                 # Step 2: Check current record status 'Y' and src del status 'Y' records having end dt '9999-12-31' date
                 validate_deleted_records_for_scd_table(self.client, edwp_schema_name, edwp_table_name, scd_settings)
 
+            # If we reach here, all SCD checks passed
+            return {
+                'status': True,
+                'test_details': {
+                    'message': f"SCD validation completed successfully for {edwp_schema_name}.{edwp_table_name}"
+                }
+            }
+
         except Exception as e:
-            LOGGER.error(f"Error during scd validation: {str(e)}")
-            return {"status": "Error", "reason": str(e)}
+            error_message = f"Error during scd validation: {str(e)}"
+            LOGGER.error(error_message)
+            # Return False status instead of "Error" to properly fail the test
+            return {
+                'status': False,
+                'test_details': {
+                    'message': error_message,
+                    'error_type': 'SCD_VALIDATION_ERROR'
+                }
+            }
 
     def finalize_and_run_rule_checks(self):
         """

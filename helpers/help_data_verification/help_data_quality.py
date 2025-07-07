@@ -2,7 +2,7 @@ import re
 
 from utils.framework.custom_data_verification_util import (
     convert_dict_dtypes, find_string_dates_needing_cast,
-    get_col_dict_from_expected_cols)
+    get_col_dict_from_expected_cols, generate_lndp_and_edwp_col_values)
 from utils.framework.custom_logger_util import get_logger
 from utils.framework.data_quality_utils.accuracy_util import \
     check_numeric_precision_for_column
@@ -120,10 +120,23 @@ class DataQualityHelper:
         Returns:
             dict: Dictionary containing all duplication check results
         """
-
-        unique_columns = self.layer_settings['columns_info']['unique_columns']
-        expected_columns = self.layer_settings['columns_info']['expected_columns']
+        expected_columns = []
+        unique_columns = []
+        config_unique_columns = self.layer_settings['columns_info']['unique_columns']
+        config_expected_columns = self.layer_settings['columns_info']['expected_columns']
         has_mapping = self.layer_settings['has_mapping']
+
+        lndp_columns, ewdp_columns = generate_lndp_and_edwp_col_values(config_expected_columns)
+        if self.layer_name == "target_lndp":
+            expected_columns = lndp_columns
+        elif self.layer_name == "target_edwp":
+            expected_columns = ewdp_columns
+
+        unique_lndp_columns, unique_ewdp_columns = generate_lndp_and_edwp_col_values(config_unique_columns)
+        if self.layer_name == "target_lndp":
+            unique_columns = unique_lndp_columns
+        elif self.layer_name == "target_edwp":
+            unique_columns = unique_ewdp_columns
 
         final_cols = self.layer_settings['mapped_expected_cols'] if has_mapping else expected_columns
         sys_insert_col = self.layer_settings['columns_info']['system_columns'][1]
@@ -176,9 +189,14 @@ class DataQualityHelper:
         Returns:
             dict: Dictionary containing all completeness checks results
         """
-        expected_columns = self.layer_settings['columns_info']['expected_columns']
+        expected_columns = []
+        config_columns = self.layer_settings['columns_info']['expected_columns']
+        lndp_columns, ewdp_columns = generate_lndp_and_edwp_col_values(config_columns)
+        if self.layer_name == "target_lndp":
+            expected_columns = lndp_columns
+        elif self.layer_name == "target_edwp":
+            expected_columns = ewdp_columns
         has_mapping = self.layer_settings['has_mapping']
-
         final_cols = self.layer_settings['mapped_expected_cols'] if has_mapping else expected_columns
 
         cols_dict = get_col_dict_from_expected_cols(final_cols)
@@ -296,8 +314,10 @@ class DataQualityHelper:
                 self.client, src_schema, src_table, trg_schema, trg_table, using_synthetic_data,
                 where_clause=where_clause
             )
-            LOGGER.info(f'Consistency check phase-2: {consistency_check_results["check_row_count_consistency"]}')
-
+            if consistency_check_results["check_row_count_consistency"]['status'] == 'Warning':
+                LOGGER.warning(f'Consistency check phase-2: {consistency_check_results["check_row_count_consistency"]}')
+            else:
+                LOGGER.info(f'Consistency check phase-2: {consistency_check_results["check_row_count_consistency"]}')
             # # Column & Row Data Consistency Check
             # unique_columns = self.layer_settings['columns_info']['unique_columns']
             # expected_columns = self.layer_settings['columns_info']['expected_columns']
